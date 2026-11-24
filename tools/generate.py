@@ -772,17 +772,25 @@ def generate() -> Image.Image:
     list_x = map_x + map_w + 14
     list_w = W - list_x - MARGIN
 
-    draw.text((map_x, map_y), "WHERE IT HAPPENED", font=F_HEADLINE_SM, fill=NAVY)
-    map_content_y = map_y + 22
+    # Compute header position: below grid with 8px clear gap
+    # Grid bottom (actual drawing): Y_DAY_IN_TEN_CARDS_TOP + 2*card_h + 6 (row gap = 6)
+    grid_bottom = Y_DAY_IN_TEN_CARDS_TOP + 2 * card_h + 6
+    header_text_top = grid_bottom + 8
+    draw.text((map_x, header_text_top), "WHERE IT HAPPENED", font=F_HEADLINE_SM, fill=NAVY, anchor="lt")
+    # Map content starts 8px below header bottom (header height ~15px with anchor="lt")
+    map_content_y = header_text_top + 15 + 8
+    # Shrink map height to fit before DATE CHECK with 8px gap
+    available_map_h = max(20, Y_DATE_CHECK_TOP - 8 - map_content_y)
+    map_h = available_map_h + 22  # +22 for header space in map_h variable used by lonlat_to_xy
 
     for lon, lat in LAND_GRID:
-        dx, dy = lonlat_to_xy(lon, lat, map_x, map_content_y, map_w, map_h - 22)
-        if map_x <= dx < map_x + map_w and map_content_y <= dy < map_content_y + map_h - 22:
+        dx, dy = lonlat_to_xy(lon, lat, map_x, map_content_y, map_w, available_map_h)
+        if map_x <= dx < map_x + map_w and map_content_y <= dy < map_content_y + available_map_h:
             draw.ellipse([dx - 1, dy - 1, dx + 1, dy + 1], fill=(160, 150, 130))
 
     for num, name, lon, lat in PINS:
-        px, py = lonlat_to_xy(lon, lat, map_x, map_content_y, map_w, map_h - 22)
-        if map_x <= px < map_x + map_w and map_content_y <= py < map_content_y + map_h - 22:
+        px, py = lonlat_to_xy(lon, lat, map_x, map_content_y, map_w, available_map_h)
+        if map_x <= px < map_x + map_w and map_content_y <= py < map_content_y + available_map_h:
             draw.ellipse([px - 6, py - 6, px + 6, py + 6], fill=RED, outline=WHITE, width=1)
             nw, nh = measure_text(draw, str(num), F_MAP_NUM)
             draw.text((px - nw // 2, py - nh // 2), str(num), font=F_MAP_NUM, fill=WHITE)
@@ -791,7 +799,6 @@ def generate() -> Image.Image:
     list_y = map_y + 22
     also_on_header = "ALSO ON TUE 24 NOV — 22 MORE"
     draw.text((list_x, list_y), also_on_header, font=F_HEADLINE_SM, fill=NAVY)
-    print(f"DEBUG LIST HEADER: list_x={list_x}, list_y={list_y}")
     list_y += 22
 
     also_on = [
