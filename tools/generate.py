@@ -104,9 +104,12 @@ def wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont
     return lines
 
 def draw_text_box(draw: ImageDraw.ImageDraw, x: int, y: int, text: str, font: ImageFont.FreeTypeFont,
-                  color: tuple, max_w: int, line_spacing: int = 1, align: str = "left", max_lines: int = None) -> int:
+                  color: tuple, max_w: int, line_spacing: int = 1, align: str = "left", max_lines: int = None,
+                  no_ellipsis: bool = False) -> int:
     lines = wrap_text(draw, text, font, max_w)
     if max_lines is not None and len(lines) > max_lines:
+        if no_ellipsis:
+            raise ValueError(f"Text exceeds max_lines={max_lines} and no_ellipsis=True: {text!r}")
         lines = lines[:max_lines]
         last = lines[-1]
         while measure_text(draw, last + "…", font)[0] > max_w and len(last) > 3:
@@ -409,6 +412,7 @@ def generate() -> Image.Image:
 
     GAP = 5
     GAP8 = 16  # minimum 8px CLEAR visual gap for Cluster A bands (font metrics need extra)
+    MASTHEAD_GAP = 12  # fixed: was 5px, now 12px for clear gap after title
 
     # ═══ MEASURE ALL FONT METRICS ═══
     title_h = font_height(draw, F_TITLE)
@@ -465,7 +469,7 @@ def generate() -> Image.Image:
 
     # 1. MASTHEAD (baseline at y + ascent)
     Y_MASTHEAD_BASELINE = y + title_ascent
-    y = Y_MASTHEAD_BASELINE + title_descent + GAP
+    y = Y_MASTHEAD_BASELINE + title_descent + MASTHEAD_GAP
 
     # 2. SUBHEAD
     Y_SUBHEAD_BASELINE = y + subhead_ascent
@@ -673,7 +677,7 @@ def generate() -> Image.Image:
         {
             "kicker": "LOW EARTH ORBIT",
             "tag": "CLAIM",
-            "headline": "NATO: space a security strategy as\nRussia readies nuclear orbiter",
+            "headline": "NATO: space is now a security\nRussia readies nuclear orbiter",
             "body": "German media: Moscow could orbit\nnuclear spacecraft by December.",
             "source": "Investopedia · Reuters",
             "scene_draw": draw_orbit_scene,
@@ -703,7 +707,9 @@ def generate() -> Image.Image:
         draw.rounded_rectangle([kx, ky, kx + kw + 2 * kpad_x, ky + kh + 2 * kpad_y],
                                radius=4, fill=(20, 20, 40))
         draw.text((kx + kpad_x, ky + kpad_y), kicker, font=F_CAPTION_BOLD, fill=WHITE)
-        draw_chip(draw, px + 8, py + 22, story["tag"], F_CAPTION, TAG_COLOURS[story["tag"]])
+        # Chip in own y-band BELOW kicker: 6px below kicker bottom, 6px inside left edge
+        chip_y = ky + kh + 2 * kpad_y + 6
+        draw_chip(draw, px + 8, chip_y, story["tag"], F_CAPTION, TAG_COLOURS[story["tag"]])
         scene_x = px + 8
         scene_y = py + 30
         scene_w = panel_w - 16
@@ -722,7 +728,9 @@ def generate() -> Image.Image:
             bg.paste(scene_img, mask=scene_img.split()[3])
             img.paste(bg, (scene_x, scene_y))
         hy = py + panel_h - 55
-        draw_text_box(draw, px + 8, hy, story["headline"], F_HEADLINE_XS, BLACK, panel_w - 16, line_spacing=1, max_lines=2)
+        # Panel 3 (i==2): disable ellipsis so too-long text fails loudly
+        no_ellipsis = (i == 2)
+        draw_text_box(draw, px + 8, hy, story["headline"], F_HEADLINE_XS, BLACK, panel_w - 16, line_spacing=1, max_lines=2, no_ellipsis=no_ellipsis)
         by = hy + 44
         draw_text_box(draw, px + 8, by, story["body"], F_BODY_SM, DARK_GRAY, panel_w - 16, line_spacing=1, max_lines=2)
         sy = by + 24
@@ -783,14 +791,20 @@ def generate() -> Image.Image:
     available_map_h = max(20, Y_DATE_CHECK_TOP - 8 - map_content_y)
     map_h = available_map_h + 22  # +22 for header space in map_h variable used by lonlat_to_xy
 
+    # Hard vertical divider at x=514 (list starts at 526, 12px clear)
+    MAP_CLIP_X = 514
+    # Pin radius is 6, land dot radius is 1. Clip centers so edges don't cross 514.
+    PIN_CLIP_X = MAP_CLIP_X - 6   # 508
+    DOT_CLIP_X = MAP_CLIP_X - 1   # 513
+
     for lon, lat in LAND_GRID:
         dx, dy = lonlat_to_xy(lon, lat, map_x, map_content_y, map_w, available_map_h)
-        if map_x <= dx < map_x + map_w and map_content_y <= dy < map_content_y + available_map_h:
+        if map_x <= dx <= DOT_CLIP_X and map_content_y <= dy < map_content_y + available_map_h:
             draw.ellipse([dx - 1, dy - 1, dx + 1, dy + 1], fill=(160, 150, 130))
 
     for num, name, lon, lat in PINS:
         px, py = lonlat_to_xy(lon, lat, map_x, map_content_y, map_w, available_map_h)
-        if map_x <= px < map_x + map_w and map_content_y <= py < map_content_y + available_map_h:
+        if map_x <= px <= PIN_CLIP_X and map_content_y <= py < map_content_y + available_map_h:
             draw.ellipse([px - 6, py - 6, px + 6, py + 6], fill=RED, outline=WHITE, width=1)
             nw, nh = measure_text(draw, str(num), F_MAP_NUM)
             draw.text((px - nw // 2, py - nh // 2), str(num), font=F_MAP_NUM, fill=WHITE)
